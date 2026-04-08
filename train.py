@@ -19,13 +19,7 @@ warnings.filterwarnings("ignore")
 SEED = 42
 
 # ── MLflow: log everything locally in mlruns/ ─────────────────────────────────
-import subprocess
-tracking_uri = subprocess.check_output([
-    "az", "ml", "workspace", "show",
-    "--name", os.environ["AZURE_ML_WORKSPACE"],
-    "--resource-group", os.environ["AZURE_ML_RESOURCE_GROUP"],
-    "--query", "mlflow_tracking_uri", "-o", "tsv"
-], text=True).strip()
+tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "mlruns")
 mlflow.set_tracking_uri(tracking_uri)
 mlflow.set_experiment("cc-underwriting")
 
