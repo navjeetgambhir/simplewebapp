@@ -1,192 +1,297 @@
 # CC Underwriting API
 
-Machine learning model for automated credit card underwriting decisions, deployed as a REST API on Azure.
-
-## What It Does
-
-A Random Forest classifier trained on 5,000 historical credit card applications with 176 engineered features. It accepts applicant data via a REST API and returns:
-
-- **Approval Decision** (Approved / Declined)
-- **Approval Probability** (0.0 - 1.0)
-- **FICO-Style Score** (600 - 750)
-- **Risk Band** (Very High / High / Medium / Low / Excellent)
-
-**Model Performance:** AUC = 0.9955 | Gini = 0.9909 | F1 = 0.9621
+A machine learning API that predicts whether a credit card application should be approved or declined. Built with Python, deployed on Azure, automated with GitHub Actions.
 
 ---
 
-## Architecture
+## What Does This Do?
 
-```
-Push to main
-    |
-    v
-GitHub Actions CI/CD
-    |
-    +--> Install deps
-    +--> Login to Azure (OIDC)
-    +--> Set MLflow tracking URI
-    +--> Train model (train.py)
-    +--> Deploy to Azure Web App
-    |
-    v
-FastAPI API (https://ccuw-api-mahi80.azurewebsites.net)
-```
+You send applicant details (income, credit score, age, etc.) to a REST API, and it returns:
+
+| Field | Example | Meaning |
+|-------|---------|---------|
+| `decision` | `"Approved"` | Should we approve this applicant? |
+| `approval_prob` | `0.68` | How confident is the model? (0 to 1) |
+| `scorecard_score` | `545.5` | FICO-style credit score |
+| `risk_band` | `"High Risk"` | Risk category |
+
+**Model Performance:** AUC = 0.9955 (99.5% accuracy in ranking good vs bad applicants)
 
 ---
 
-## API Endpoints
+## Quick Test (Try It Now!)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/model` | GET | Model metadata and metrics |
-| `/predict` | POST | Underwriting prediction |
-
-### Example: Predict
+The API is already live. Open your terminal and paste this:
 
 ```bash
 curl -X POST https://ccuw-api-mahi80.azurewebsites.net/predict \
   -H "Content-Type: application/json" \
-  -d '{"annual_income": 75000, "fico_score": 720, "age": 35}'
+  -d '{
+    "features": {
+      "annual_income": 75000,
+      "fico_score": 720,
+      "age": 35,
+      "debt_to_income_ratio": 0.25,
+      "years_employed": 8,
+      "total_assets": 150000,
+      "total_liabilities": 30000,
+      "num_credit_cards": 3,
+      "savings_account_balance": 20000,
+      "checking_account_balance": 5000
+    }
+  }'
 ```
 
----
-
-## Project Structure
-
-```
-.
-+-- app.py                              # FastAPI inference server
-+-- train.py                            # Model training pipeline
-+-- requirements.txt                    # Python dependencies
-+-- cc_underwriting_5k_stratified11.csv # Training data (5K records)
-+-- model/
-|   +-- rf/model.pkl                    # Trained Random Forest model
-|   +-- features.json                   # 176 feature names
-|   +-- scaler.json                     # StandardScaler params
-|   +-- metrics.json                    # Training metrics
-+-- .github/workflows/
-    +-- deploy.yml                      # CI/CD pipeline
+**Response:**
+```json
+{
+  "applicant_id": null,
+  "decision": "Approved",
+  "approval_prob": 0.68,
+  "scorecard_score": 545.5,
+  "risk_band": "High Risk"
+}
 ```
 
----
+> **Tip:** You do not need to send all 168 features. Send whatever you have - missing features default to 0.
 
-## Complete Setup Guide (Step-by-Step from Scratch)
-
-This guide assumes you are starting from zero. Follow every step in order.
-
-### Prerequisites
-
-You need these tools installed on your machine:
-
+Other endpoints:
 ```bash
-# 1. Install Azure CLI
-# Windows: Download from https://aka.ms/installazurecliwindows
-# Mac:     brew install azure-cli
-# Linux:   curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+# Health check - is the API running?
+curl https://ccuw-api-mahi80.azurewebsites.net/health
 
-# 2. Install GitHub CLI
-# Windows: winget install GitHub.cli
-# Mac:     brew install gh
-# Linux:   sudo apt install gh
+# Model info - what metrics does it have?
+curl https://ccuw-api-mahi80.azurewebsites.net/model
 
-# 3. Install Git
-# Windows: https://git-scm.com/download/win
-# Mac:     xcode-select --install
-# Linux:   sudo apt install git
+# Interactive API docs (Swagger UI) - try it in your browser!
+# Open: https://ccuw-api-mahi80.azurewebsites.net/docs
+```
 
-# 4. Install Python 3.11+
+---
+
+## How It Works (Architecture)
+
+```
+You push code to GitHub
+       |
+       v
+GitHub Actions runs automatically
+       |
+       +---> Installs Python packages
+       +---> Logs into Azure (no passwords needed - uses OIDC tokens)
+       +---> Trains the ML model on 5,000 applications
+       +---> Logs metrics (AUC, F1, etc.) to Azure ML Studio
+       +---> Deploys the API to Azure Web App
+       |
+       v
+API is live at https://ccuw-api-mahi80.azurewebsites.net
+       |
+       v
+Anyone can call POST /predict to get underwriting decisions
+```
+
+**Every push to the `main` branch automatically retrains and redeploys.** No manual steps needed after initial setup.
+
+---
+
+## Project Files
+
+```
+simplewebapp/
+|
++-- app.py                              # The API server (FastAPI)
++-- train.py                            # Model training script
++-- requirements.txt                    # Python packages needed
++-- cc_underwriting_5k_stratified11.csv # Training data (5,000 applications)
++-- .gitignore                          # Files Git should ignore
+|
++-- model/                              # Trained model files
+|   +-- rf/model.pkl                    # The actual model (Random Forest)
+|   +-- features.json                   # List of 168 feature names
+|   +-- scaler.json                     # Normalization parameters
+|   +-- metrics.json                    # Model performance numbers
+|
++-- .github/
+    +-- workflows/
+        +-- deploy.yml                  # CI/CD pipeline definition
+```
+
+---
+
+## Complete Setup Guide (From Zero)
+
+> **Who is this for?** Anyone setting this up for the first time. Every command is included. Copy-paste and run them one by one.
+
+---
+
+### Prerequisites: Install These Tools First
+
+You need 4 tools. If you already have them, skip to Step 1.
+
+**1. Azure CLI** (talks to Azure from your terminal)
+```bash
+# Windows (run in PowerShell as Administrator):
+winget install Microsoft.AzureCLI
+
+# Mac:
+brew install azure-cli
+
+# Linux:
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+```
+Verify: `az version` should show a version number.
+
+**2. GitHub CLI** (talks to GitHub from your terminal)
+```bash
+# Windows:
+winget install GitHub.cli
+
+# Mac:
+brew install gh
+
+# Linux:
+sudo apt install gh
+```
+Verify: `gh version` should show a version number.
+
+**3. Git** (version control)
+```bash
+# Windows: download from https://git-scm.com/download/win
+# Mac:
+xcode-select --install
+# Linux:
+sudo apt install git
+```
+Verify: `git --version` should show a version number.
+
+**4. Python 3.11+** (for local development only)
+```bash
 # Download from https://python.org/downloads
 ```
+Verify: `python --version` should show 3.11 or higher.
+
+---
 
 ### Step 1: Login to Azure
 
-Open your terminal and run:
+This connects your terminal to your Azure account.
 
 ```bash
-# Login to Azure (this opens a browser window)
+# Opens a browser window - sign in with your Azure credentials
 az login
+```
 
-# Verify you are in the right subscription
+After logging in, verify your account:
+```bash
 az account show --query "{name:name, subscriptionId:id, tenantId:tenantId}" -o table
 ```
 
-You should see your subscription name, ID, and tenant ID. Note these down:
-- **Subscription ID**: (e.g., 3a72be92-287b-4f1e-840a-5e3e71100139)
-- **Tenant ID**: (e.g., 2b32b1fa-7899-482e-a6de-be99c0ff5516)
+You will see something like:
+```
+Name                  SubscriptionId                        TenantId
+--------------------  ------------------------------------  ------------------------------------
+Azure subscription 1  3a72be92-287b-4f1e-840a-5e3e71100139  2b32b1fa-7899-482e-a6de-be99c0ff5516
+```
 
-If you have multiple subscriptions, set the correct one:
+**Write down your Subscription ID and Tenant ID.** You will need them later.
+
+If you have multiple subscriptions, set the right one:
 ```bash
 az account set --subscription "YOUR_SUBSCRIPTION_ID"
 ```
 
+---
+
 ### Step 2: Login to GitHub CLI
 
 ```bash
-# Login to GitHub (this opens a browser window)
+# Opens a browser window - sign in with your GitHub credentials
 gh auth login
+```
+Choose: GitHub.com > HTTPS > Login with a web browser
 
-# Verify you are logged in
+Verify:
+```bash
 gh auth status
 ```
 
-### Step 3: Create Azure Resource Group
+---
 
-A resource group is a container for all your Azure resources.
+### Step 3: Create a Resource Group
+
+A resource group is like a folder in Azure. All your resources go inside it.
 
 ```bash
-# Create resource group (change location if needed)
 az group create --name zerotohero --location eastus
+```
 
-# Verify it exists
+Verify:
+```bash
 az group show --name zerotohero --query "{name:name, location:location}" -o table
 ```
 
-### Step 4: Create App Service Plan
+---
 
-This is the virtual server that will run your web app.
+### Step 4: Create an App Service Plan
+
+This is the virtual server that will run your API. Think of it as "renting a computer in the cloud."
 
 ```bash
-# Create a B2 Linux plan (2 vCPUs, 3.5 GB RAM)
 az appservice plan create \
   --name ccuw-plan \
   --resource-group zerotohero \
   --sku B2 \
   --is-linux \
   --location uksouth
+```
 
-# Verify it was created
+> **Got a quota error?** Try a different region: replace `uksouth` with `westeurope`, `centralus`, or `eastus2`
+
+Verify:
+```bash
 az appservice plan show --name ccuw-plan --resource-group zerotohero \
   --query "{name:name, sku:sku.name}" -o table
 ```
 
-> **Note:** If you get a quota error, try a different region: `--location westeurope` or `--location centralus`
+---
 
-### Step 5: Create Web App
+### Step 5: Create the Web App
 
-This is the application that will host your API.
+This is your actual API application.
 
 ```bash
-# Create the web app (name must be globally unique!)
 az webapp create \
   --name ccuw-api-mahi80 \
   --resource-group zerotohero \
   --plan ccuw-plan \
   --runtime "PYTHON:3.11"
+```
 
-# Verify it was created
+> **Name taken?** The web app name must be globally unique. If `ccuw-api-mahi80` is taken, try `ccuw-api-YOURNAME` instead.
+
+Enable auto-build (so Azure installs Python packages during deployment):
+```bash
+az webapp config appsettings set \
+  --name ccuw-api-mahi80 \
+  --resource-group zerotohero \
+  --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+```
+
+Verify:
+```bash
 az webapp show --name ccuw-api-mahi80 --resource-group zerotohero \
-  --query "{name:name, hostName:defaultHostName}" -o table
+  --query "{name:name, url:defaultHostName}" -o table
 ```
 
 Your API will be at: `https://ccuw-api-mahi80.azurewebsites.net`
 
-### Step 6: Create Azure ML Workspace (for MLflow Tracking)
+---
 
-This gives you a managed MLflow server to track model experiments.
+### Step 6: Create Azure ML Workspace (for Experiment Tracking)
 
-**6a. Create storage account:**
+This gives you a dashboard at [ml.azure.com](https://ml.azure.com) to see model performance over time.
+
+**6a. Create a storage account** (Azure ML needs somewhere to store data):
 ```bash
 az storage account create \
   --name ccuwmlflowstorage \
@@ -195,7 +300,7 @@ az storage account create \
   --sku Standard_LRS
 ```
 
-**6b. Create Key Vault:**
+**6b. Create a Key Vault** (Azure ML needs somewhere to store secrets):
 ```bash
 az keyvault create \
   --name ccuw-mlflow-kv \
@@ -203,16 +308,17 @@ az keyvault create \
   --location uksouth
 ```
 
-**6c. Create App Insights (via REST API):**
+**6c. Create App Insights** (for monitoring):
 ```bash
 az rest --method PUT \
   --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/zerotohero/providers/Microsoft.Insights/components/ccuw-mlflow-ai?api-version=2020-02-02" \
   --body '{"location":"uksouth","kind":"web","properties":{"Application_Type":"web"}}'
 ```
 
-**6d. Create the ML Workspace (via ARM template):**
+> **Important:** Replace `YOUR_SUBSCRIPTION_ID` with the value from Step 1.
 
-Save this as `ml_deploy.json`:
+**6d. Create the ML Workspace.** Save this JSON as a file called `ml_deploy.json`:
+
 ```json
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -235,6 +341,8 @@ Save this as `ml_deploy.json`:
 }
 ```
 
+> **Important:** Replace ALL THREE occurrences of `YOUR_SUBSCRIPTION_ID` in the JSON above.
+
 Then deploy it:
 ```bash
 az deployment group create \
@@ -242,25 +350,23 @@ az deployment group create \
   --template-file ml_deploy.json
 ```
 
-**6e. Verify:**
-```bash
-az rest --method GET \
-  --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/zerotohero/providers/Microsoft.MachineLearningServices/workspaces/ccuw-mlflow?api-version=2024-04-01" \
-  --query "{name:name, mlFlowTrackingUri:properties.mlFlowTrackingUri}" -o table
-```
+This takes about 2-3 minutes. When it says `"provisioningState": "Succeeded"`, you are good.
 
-### Step 7: Set Up OIDC Authentication (GitHub to Azure)
+---
 
-This allows GitHub Actions to deploy to Azure without storing passwords.
+### Step 7: Set Up OIDC Authentication (GitHub <-> Azure)
 
-**7a. Create Azure AD App Registration:**
+This lets GitHub Actions deploy to Azure **without passwords**. It uses modern token-based auth (OIDC).
+
+**7a. Create an App Registration** (an identity for GitHub Actions):
 ```bash
 CLIENT_ID=$(az ad app create --display-name github-ccuw --query appId -o tsv)
-echo "Your Client ID: $CLIENT_ID"
-# SAVE THIS - you need it for GitHub secrets!
+echo "=== YOUR CLIENT ID: $CLIENT_ID ==="
 ```
 
-**7b. Create Federated Credential:**
+**Save that CLIENT_ID!** You will need it in the next steps and for GitHub secrets.
+
+**7b. Create a Federated Credential** (the trust link between GitHub and Azure):
 ```bash
 az ad app federated-credential create \
   --id "$CLIENT_ID" \
@@ -272,56 +378,100 @@ az ad app federated-credential create \
   }'
 ```
 
-**7c. Create Service Principal:**
+> **Important:** Replace `mahi80/simplewebapp` with YOUR GitHub username/repo if different.
+
+**7c. Create a Service Principal** (gives the app registration actual permissions):
 ```bash
 az ad sp create --id "$CLIENT_ID"
 ```
 
-**7d. Get Service Principal Object ID:**
+**7d. Get the Service Principal Object ID:**
 ```bash
 SP_OBJ_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv)
-echo "SP Object ID: $SP_OBJ_ID"
+echo "=== SP Object ID: $SP_OBJ_ID ==="
 ```
 
-**7e. Assign Contributor role:**
+**7e. Give it Contributor access** to your resource group:
 ```bash
-ROLE_ASSIGNMENT_ID=$(python -c "import uuid; print(uuid.uuid4())")
+ROLE_ID=$(python -c "import uuid; print(uuid.uuid4())")
 
 az rest --method PUT \
-  --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/zerotohero/providers/Microsoft.Authorization/roleAssignments/${ROLE_ASSIGNMENT_ID}?api-version=2022-04-01" \
+  --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/zerotohero/providers/Microsoft.Authorization/roleAssignments/${ROLE_ID}?api-version=2022-04-01" \
   --body "{\"properties\":{\"roleDefinitionId\":\"/subscriptions/YOUR_SUBSCRIPTION_ID/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c\",\"principalId\":\"${SP_OBJ_ID}\",\"principalType\":\"ServicePrincipal\"}}"
 ```
 
-### Step 8: Clone Repo and Add Code
+> **Important:** Replace `YOUR_SUBSCRIPTION_ID` (appears twice in the URL and body).
 
+---
+
+### Step 8: Create the GitHub Repository and Add Code
+
+**8a. Create a new repo on GitHub** (if you have not already):
 ```bash
-# Clone the repository
-git clone https://github.com/mahi80/simplewebapp.git
+gh repo create simplewebapp --public --clone
 cd simplewebapp
-
-# Unzip ccuw-simple.zip and copy files
-# (Replace /path/to/ with actual path to your zip)
-unzip /path/to/ccuw-simple.zip -d /tmp/ccuw-simple
-cp -r /tmp/ccuw-simple/ccuw-simple/* .
-cp -r /tmp/ccuw-simple/ccuw-simple/.github .
-cp /tmp/ccuw-simple/ccuw-simple/.gitignore .
 ```
 
-### Step 9: Set GitHub Secrets
+**8b. Unzip the project files and copy them in:**
 
 ```bash
-gh secret set AZURE_CLIENT_ID         --repo mahi80/simplewebapp --body "YOUR_CLIENT_ID"
-gh secret set AZURE_TENANT_ID         --repo mahi80/simplewebapp --body "YOUR_TENANT_ID"
-gh secret set AZURE_SUBSCRIPTION_ID   --repo mahi80/simplewebapp --body "YOUR_SUBSCRIPTION_ID"
-gh secret set AZURE_WEBAPP_NAME       --repo mahi80/simplewebapp --body "ccuw-api-mahi80"
-gh secret set AZURE_ML_WORKSPACE      --repo mahi80/simplewebapp --body "ccuw-mlflow"
-gh secret set AZURE_ML_RESOURCE_GROUP --repo mahi80/simplewebapp --body "zerotohero"
+# On Mac/Linux:
+unzip /path/to/ccuw-simple.zip -d /tmp/ccuw-extract
+cp -r /tmp/ccuw-extract/ccuw-simple/* .
+cp -r /tmp/ccuw-extract/ccuw-simple/.github .
+cp /tmp/ccuw-extract/ccuw-simple/.gitignore .
 
-# Verify all 6 secrets are set
-gh secret list --repo mahi80/simplewebapp
+# On Windows (PowerShell):
+Expand-Archive -Path "C:\path\to\ccuw-simple.zip" -DestinationPath "C:\tmp\ccuw-extract"
+Copy-Item -Recurse "C:\tmp\ccuw-extract\ccuw-simple\*" .
+Copy-Item -Recurse "C:\tmp\ccuw-extract\ccuw-simple\.github" .
+Copy-Item "C:\tmp\ccuw-extract\ccuw-simple\.gitignore" .
 ```
 
-### Step 10: Push and Deploy
+---
+
+### Step 9: Set the 6 GitHub Secrets
+
+These are encrypted values that your CI/CD pipeline reads during deployment. Run each command:
+
+```bash
+# 1. The Client ID from Step 7a
+gh secret set AZURE_CLIENT_ID --body "YOUR_CLIENT_ID"
+
+# 2. Your Tenant ID from Step 1
+gh secret set AZURE_TENANT_ID --body "YOUR_TENANT_ID"
+
+# 3. Your Subscription ID from Step 1
+gh secret set AZURE_SUBSCRIPTION_ID --body "YOUR_SUBSCRIPTION_ID"
+
+# 4. Your Web App name from Step 5
+gh secret set AZURE_WEBAPP_NAME --body "ccuw-api-mahi80"
+
+# 5. The ML Workspace name from Step 6
+gh secret set AZURE_ML_WORKSPACE --body "ccuw-mlflow"
+
+# 6. The resource group name
+gh secret set AZURE_ML_RESOURCE_GROUP --body "zerotohero"
+```
+
+Verify all 6 are set:
+```bash
+gh secret list
+```
+
+You should see:
+```
+AZURE_CLIENT_ID          Updated 2026-04-08
+AZURE_TENANT_ID          Updated 2026-04-08
+AZURE_SUBSCRIPTION_ID    Updated 2026-04-08
+AZURE_WEBAPP_NAME        Updated 2026-04-08
+AZURE_ML_WORKSPACE       Updated 2026-04-08
+AZURE_ML_RESOURCE_GROUP  Updated 2026-04-08
+```
+
+---
+
+### Step 10: Push Code and Deploy!
 
 ```bash
 git add .
@@ -329,82 +479,232 @@ git commit -m "feat: CC underwriting model + Azure Web App deploy"
 git push origin main
 ```
 
-Watch the deployment:
+**This push triggers everything automatically.** GitHub Actions will:
+1. Install Python packages (~1 min)
+2. Login to Azure using OIDC
+3. Train the model (~1 min)
+4. Print AUC = 0.9955 in the logs
+5. Deploy to your Web App (~3 min)
+
+Watch it live:
 ```bash
-gh run watch --repo mahi80/simplewebapp
-# Or visit: https://github.com/mahi80/simplewebapp/actions
+gh run watch
 ```
+
+Or open in browser: `https://github.com/mahi80/simplewebapp/actions`
+
+---
 
 ### Step 11: Verify Everything Works
 
+Wait about 1-2 minutes after the pipeline finishes (the app needs to start up).
+
 ```bash
-# Health check
+# 1. Is the API alive?
 curl https://ccuw-api-mahi80.azurewebsites.net/health
+# Expected: {"status":"ok"}
 
-# Model info
+# 2. What model is running?
 curl https://ccuw-api-mahi80.azurewebsites.net/model
+# Expected: {"features":168,"metrics":{"auc":0.9955,"gini":0.9909,...}}
 
-# Test prediction
+# 3. Test a real prediction
 curl -X POST https://ccuw-api-mahi80.azurewebsites.net/predict \
   -H "Content-Type: application/json" \
-  -d '{"annual_income": 75000, "fico_score": 720, "age": 35}'
+  -d '{"features": {"annual_income": 75000, "fico_score": 720, "age": 35}}'
+# Expected: {"decision":"Approved","approval_prob":0.68,...}
 
-# MLflow: https://ml.azure.com -> Experiments -> cc-underwriting
+# 4. Open the interactive API docs in your browser
+# https://ccuw-api-mahi80.azurewebsites.net/docs
+
+# 5. Check MLflow experiments
+# https://ml.azure.com -> select your workspace -> Experiments -> cc-underwriting
 ```
 
 ---
 
-## Azure Resources Summary
+## What Gets Created in Azure
 
-| Resource | Name | Purpose |
-|----------|------|---------|
-| Resource Group | `zerotohero` | Container for all resources |
-| App Service Plan | `ccuw-plan` (B2 Linux) | Compute for the web app |
-| Web App | `ccuw-api-mahi80` (Python 3.11) | Hosts the FastAPI API |
-| Storage Account | `ccuwmlflowstorage` | Storage for ML workspace |
-| Key Vault | `ccuw-mlflow-kv` | Secrets for ML workspace |
-| App Insights | `ccuw-mlflow-ai` | Monitoring for ML workspace |
-| ML Workspace | `ccuw-mlflow` | MLflow experiment tracking |
-| App Registration | `github-ccuw` | OIDC auth for GitHub Actions |
+| Resource | Name | What It Does | Monthly Cost (approx) |
+|----------|------|--------------|-----------------------|
+| Resource Group | `zerotohero` | Folder for all resources | Free |
+| App Service Plan | `ccuw-plan` | Virtual server (B2: 2 CPU, 3.5GB RAM) | ~$55/month |
+| Web App | `ccuw-api-mahi80` | Runs the Python API | Included in plan |
+| Storage Account | `ccuwmlflowstorage` | Stores ML experiment data | ~$1/month |
+| Key Vault | `ccuw-mlflow-kv` | Stores ML workspace secrets | ~$0.03/operation |
+| App Insights | `ccuw-mlflow-ai` | Monitoring and logging | Free tier |
+| ML Workspace | `ccuw-mlflow` | MLflow experiment tracking UI | Free tier |
+| App Registration | `github-ccuw` | GitHub-to-Azure auth (OIDC) | Free |
 
-## GitHub Secrets Summary
+**To stop all costs:** Delete the App Service Plan (the only significant charge):
+```bash
+az appservice plan delete --name ccuw-plan --resource-group zerotohero --yes
+```
 
-| Secret | Purpose |
-|--------|---------|
-| `AZURE_CLIENT_ID` | OIDC app registration ID |
-| `AZURE_TENANT_ID` | Azure AD tenant |
-| `AZURE_SUBSCRIPTION_ID` | Azure subscription |
-| `AZURE_WEBAPP_NAME` | Target Web App name |
-| `AZURE_ML_WORKSPACE` | MLflow workspace name |
-| `AZURE_ML_RESOURCE_GROUP` | ML workspace resource group |
+**To delete everything:**
+```bash
+az group delete --name zerotohero --yes --no-wait
+```
 
-## CI/CD Pipeline Steps
+---
 
-1. Push to `main` triggers GitHub Actions
-2. Checks out code
-3. Sets up Python 3.11
-4. Installs dependencies
-5. Logs into Azure using OIDC (passwordless)
-6. Installs Azure ML CLI extension
-7. Gets MLflow tracking URI from Azure ML workspace
-8. Trains model - logs metrics to Azure ML
-9. Deploys to Azure Web App
-10. API goes live
+## API Reference
+
+### GET /health
+Returns API status.
+```bash
+curl https://ccuw-api-mahi80.azurewebsites.net/health
+```
+Response: `{"status": "ok"}`
+
+### GET /model
+Returns model metadata.
+```bash
+curl https://ccuw-api-mahi80.azurewebsites.net/model
+```
+Response:
+```json
+{"features": 168, "metrics": {"auc": 0.9955, "gini": 0.9909, "accuracy": 0.9621, "f1": 0.9621}}
+```
+
+### POST /predict
+Send applicant data, get an underwriting decision.
+
+**Request body:**
+```json
+{
+  "applicant_id": "APP-001",
+  "features": {
+    "annual_income": 75000,
+    "fico_score": 720,
+    "age": 35,
+    "debt_to_income_ratio": 0.25,
+    "years_employed": 8
+  }
+}
+```
+
+- `applicant_id` is optional (for your tracking)
+- `features` can include any subset of the 168 model features
+- Missing features default to 0
+
+**Response:**
+```json
+{
+  "applicant_id": "APP-001",
+  "decision": "Approved",
+  "approval_prob": 0.6808,
+  "scorecard_score": 545.5,
+  "risk_band": "High Risk"
+}
+```
+
+**Risk bands:**
+| Score Range | Risk Band |
+|-------------|-----------|
+| < 500 | Very High Risk |
+| 500 - 559 | High Risk |
+| 560 - 619 | Medium Risk |
+| 620 - 679 | Low Risk |
+| 680 - 739 | Very Low Risk |
+| 740+ | Excellent |
+
+### Interactive Docs
+Open in browser: [https://ccuw-api-mahi80.azurewebsites.net/docs](https://ccuw-api-mahi80.azurewebsites.net/docs)
+
+This gives you a Swagger UI where you can test the API directly from your browser.
+
+---
+
+## Some Common Feature Names
+
+You do not need all 168 features. Here are the most useful ones:
+
+| Feature | Description | Example |
+|---------|-------------|---------|
+| `annual_income` | Yearly income | 75000 |
+| `fico_score` | Credit score | 720 |
+| `age` | Applicant age | 35 |
+| `debt_to_income_ratio` | Total debt / income | 0.25 |
+| `years_employed` | Years at current job | 8 |
+| `total_assets` | Total asset value | 150000 |
+| `total_liabilities` | Total debt amount | 30000 |
+| `net_worth` | Assets minus liabilities | 120000 |
+| `savings_account_balance` | Savings balance | 20000 |
+| `checking_account_balance` | Checking balance | 5000 |
+| `num_credit_cards` | Number of credit cards | 3 |
+| `num_total_credit_accounts` | All credit accounts | 8 |
+| `credit_history_length_months` | Credit history age | 120 |
+| `num_delinquent_accounts` | Past-due accounts | 0 |
+| `monthly_rent_mortgage` | Monthly housing cost | 1500 |
+
+---
+
+## CI/CD Pipeline Details
+
+What happens when you `git push origin main`:
+
+| Step | What Happens | Time |
+|------|-------------|------|
+| 1. Checkout | GitHub clones your repo | 5s |
+| 2. Setup Python | Installs Python 3.11 on the runner | 10s |
+| 3. Install deps | Runs `pip install -r requirements.txt` | 30s |
+| 4. Azure Login | Authenticates via OIDC (no passwords) | 5s |
+| 5. ML Extension | Installs `az ml` CLI extension | 20s |
+| 6. MLflow URI | Gets tracking URL from Azure ML | 5s |
+| 7. Train Model | Runs `train.py` - trains Random Forest | 60s |
+| 8. Show Metrics | Prints AUC, Gini, F1 to the log | 1s |
+| 9. Deploy | Uploads code to Azure Web App | 120s |
+| **Total** | | **~4-6 min** |
+
+---
 
 ## Local Development
 
+Want to run the API on your own machine?
+
 ```bash
+# 1. Clone the repo
+git clone https://github.com/mahi80/simplewebapp.git
+cd simplewebapp
+
+# 2. Install dependencies
 pip install -r requirements.txt
-python train.py          # Train model (logs to local mlruns/)
-uvicorn app:app --reload # Start API at http://localhost:8000
+
+# 3. Train the model (saves to model/ folder)
+python train.py
+
+# 4. Start the API
+uvicorn app:app --reload
+
+# 5. Open http://localhost:8000/docs in your browser
 ```
+
+---
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| Quota error on App Service Plan | Try a different region: `--location westeurope` |
-| OIDC login fails in GitHub Actions | Verify federated credential subject matches your repo |
-| MLflow tracking fails | Ensure `azureml-mlflow` is in requirements.txt |
-| `model/rf already exists` | Fixed in train.py - it clears the dir before saving |
-| `parse_version` import error | Use `imbalanced-learn>=0.12.3` |
+| Problem | Solution |
+|---------|----------|
+| `Quota error` when creating App Service Plan | Try a different region: `--location westeurope` |
+| `ccuw-api-mahi80 already exists` | Pick a different name: `ccuw-api-YOURNAME` |
+| GitHub Actions fails at "Login to Azure" | Check your 3 Azure secrets (CLIENT_ID, TENANT_ID, SUBSCRIPTION_ID) |
+| GitHub Actions fails at "Train model" | Check the error log - usually a package version issue |
+| API shows "Application Error" after deploy | Wait 2 minutes for startup. Check `SCM_DO_BUILD_DURING_DEPLOYMENT=true` is set |
+| `parse_version` import error | Use `imbalanced-learn>=0.12.3` in requirements.txt |
+| `model/rf already exists` error | Already fixed in train.py (it clears the directory) |
+| MLflow artifact upload warning | Safe to ignore - metrics still log to Azure ML |
+| `curl: connection refused` locally | Make sure uvicorn is running on port 8000 |
+
+---
+
+## Useful Links
+
+| Resource | URL |
+|----------|-----|
+| Live API | https://ccuw-api-mahi80.azurewebsites.net |
+| API Docs (Swagger) | https://ccuw-api-mahi80.azurewebsites.net/docs |
+| GitHub Repo | https://github.com/mahi80/simplewebapp |
+| GitHub Actions | https://github.com/mahi80/simplewebapp/actions |
+| Azure ML Studio | https://ml.azure.com |
+| Azure Portal | https://portal.azure.com |
