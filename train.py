@@ -119,6 +119,9 @@ with mlflow.start_run(run_name=f"train-{os.getenv('GITHUB_SHA','local')[:7]}"):
     with open("model/scaler.json", "w") as f:
         json.dump({"mean": scaler.mean_.tolist(), "scale": scaler.scale_.tolist()}, f)
 
-    mlflow.log_artifacts("model")
+    try:
+        mlflow.log_artifacts("model")
+    except Exception as e:
+        print(f"Warning: artifact upload skipped ({e})")
 
     print(f"\n✅ Model saved to model/  |  AUC: {metrics['auc']}")
